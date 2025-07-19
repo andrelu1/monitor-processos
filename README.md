@@ -215,8 +215,8 @@ Autor
 
 André
 
-📄 Licença
-
+Licença
+MIT
 
 Este projeto está licenciado sob os termos da [Licença MIT](LICENSE).
 
