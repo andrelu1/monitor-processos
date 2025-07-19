@@ -1,0 +1,13 @@
+bc
+curl
+mailutils               
+inotify-tools
+unhide
+zenity
+coreutils
+procps-ng
+inetutils
+psmisc                  
+man-db                  
+util-linux              
+iproute2                
