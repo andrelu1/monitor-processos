@@ -1,0 +1,24 @@
+{
+  "blocked_countries": [
+    "RU",
+    "CN",
+    "KP",
+    "IR"
+  ],
+  "allowed_countries": [
+    "US",
+    "CA",
+    "BR",
+    "DE",
+    "GB"
+  ],
+  "blocked_orgs": [
+    "DigitalOcean",
+    "Contabo",
+    "Hetzner"
+  ],
+  "blocked_asns": [
+    "AS14061",
+    "AS51167"
+  ]
+}

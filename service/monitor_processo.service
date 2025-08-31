@@ -1,8 +1,0 @@
-[Unit]
-Description=Análise periódica de processos
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/home/andre/monitor-processos/monitor_processo.sh
-WorkingDirectory=/home/andre/monitor-processos

@@ -1,223 +1,181 @@
-# Monitor de Processos - Arch Linux
+# Threat Hunter for Linux
 
-Sistema completo para monitoramento de processos atípicos, com:
+![Versão](https://img.shields.io/badge/versão-2.0-blue)
+![Licença](https://img.shields.io/badge/licença-MIT-green)
+![Shell](https://img.shields.io/badge/shell-Bash-lightgrey)
+![Compatibilidade](https://img.shields.io/badge/compatibilidade-Arch%20Linux-blueviolet)
 
-- Análise periódica
-- Monitoramento em tempo real (inotify)
-- Interface gráfica com Zenity
-- Integração com Telegram e e-mail
-- Histórico de processos e hash de binários
+Script de Caça a Ameaças (Threat Hunting) e Resposta a Incidentes para Linux (foco em Arch Linux), combinando orquestração em Bash com análise em Python para oferecer uma solução de linha de comando eficaz e informativa.
 
----
+## Funcionalidades
 
-## Estrutura do Projeto
+- Análise de Processos:
+  - Monitoramento de processos com maior consumo de CPU/Memória.
+  - Risk Scoring (pontuação de risco) a partir de múltiplas heurísticas.
+  - Detecção de mascaramento, execução “fileless” (binário deletado) e abuso de LD_PRELOAD.
+- Análise de Rede:
+  - Identificação de listeners novos/não autorizados.
+  - Monitoramento de conexões externas (outbound).
+  - Enriquecimento com inteligência:
+    - DNSBL: IPs públicos em blacklists.
+    - WHOIS: dados de registro de IPs suspeitos.
+  - Políticas de rede (bloqueio/liberação por país, organização, ASN).
+- Persistência:
+  - Cron (sistema/usuário), serviços systemd habilitados.
+  - Arquivos de inicialização de Shell (.bashrc, .profile, etc.).
+  - Novas chaves SSH autorizadas.
+- Escalação de Privilégios e Evasão:
+  - Integridade de arquivos críticos (ex.: /etc/sudoers).
+  - Novos arquivos SUID/SGID.
+  - Arquivos imutáveis (+i) em diretórios de sistema.
+  - Timestomping.
+- Rootkits:
+  - Baseline de módulos do kernel (LKM).
+  - Detecção de sockets ocultos (comparando ss e lsof).
+- Forense:
+  - Históricos de comandos (padrões maliciosos).
+  - Assinaturas de web shells em diretórios web.
+- Guia de Resposta a Incidentes:
+  - Menu interativo para revisar alertas.
+  - Ações rápidas: matar processos, quarentena de arquivos, bloqueio de IPs.
 
-monitor-processos/
-├── monitor_processo.sh          # Script principal de escaneamento
-├── monitor_gui.sh               # Interface gráfica com Zenity
-├── monitor_realtime.sh          # Monitoramento de /tmp e similares com inotify
-├── processo_whitelist.txt       # Lista de processos confiáveis
-├── hash_db.txt                  # Hashes dos binários verificados
-├── alertas.log                  # Log de alertas
-├── .env                         # Cadastro para envio de e-mail e Telegram
-├── historico/                   # Snapshots dos processos
-├── requisitos.txt               # Lista de pacotes necessários 
-├── install.sh                   # Script de instalação 
-└── service/                     # Arquivos para o systemd
-├── monitor_processo.service
-├── monitor_processo.timer
-└── monitor_realtime.service
+## Requisitos
 
+- Bash e sudo
+- Suporte a gerenciadores: pacman, apt, dnf, yum, zypper, apk
+- Dependências opcionais são detectadas automaticamente (yara, git, jq, python3, etc.). O script tenta instalar quando possível ou ajusta funcionalidades.
 
----
+## Instalação Rápida
 
-## Instalação (Automática)
-
-### 1. Dê permissão e execute:
-
+1) Clone o repositório:
 ```bash
-chmod +x install.sh
-./install.sh
+git clone https://github.com/andrelu1/monitor-processos.git
+cd monitor-processos
+chmod +x monitor_processo.sh
 
-    O script irá:
+    Rode a primeira vez (cria toda a estrutura automaticamente):
 
-        Instalar os pacotes necessários
-        Criar arquivos e pastas obrigatórios
-        Copiar e ativar os serviços systemd
-        Atualizar o banco de dados do man
-        Mostrar este README no final
+Bash
 
- Instalação manual de pacotes
+sudo ./monitor_processo.sh
 
-sudo pacman -S --needed $(< requisitos.txt)
+Notas:
 
-Ou:
+    Na primeira execução, o script cria logs/, baselines/, quarentena/, etc.
+    O módulo YARA baixa as regras e, se necessário, compila o YARA do fonte com módulos extras (dex, cuckoo, magic, dotnet). Isso pode levar alguns minutos.
 
-sudo pacman -S bc curl mailutils inotify-tools unhide zenity coreutils procps-ng inetutils psmisc man-db util-linux iproute2 gnome-terminal
+Uso
 
- Configuração do .env
+    Varredura completa (padrão):
 
-Crie o arquivo .env com as variáveis de alerta:
+Bash
 
+sudo ./monitor_processo.sh
+
+    Guia de Resposta a Incidentes (sem nova varredura):
+
+Bash
+
+sudo ./monitor_processo.sh --resposta-apenas
+
+    Outras opções:
+    | Flag | Descrição      |
+    |-----------------------|---------------------------------------------------------------------------|
+    | --scan-completo       | Executa a varredura completa (padrão).                                    |
+    | --resposta-apenas     | Pula a varredura e abre o menu de análise de alertas anteriores.          |
+    | --criar-baselines     | Cria/recria arquivos de baseline (hashes, LKM, etc.) e sai.               |
+    | --dry-run             | Executa a varredura sem enviar notificações externas.                     |
+    | -h, --ajuda           | Exibe a ajuda.                                                            |
+
+Configuração (.env)
+
+Crie um .env na raiz para personalizar o comportamento. Exemplo:
+
+ini
+
+# Notificações
 TELEGRAM_SEND=true
-TELEGRAM_TOKEN=123456:ABC-DEF
-TELEGRAM_CHAT_ID=12345678
+TELEGRAM_TOKEN="seu_token"
+TELEGRAM_CHAT_ID="seu_chat_id"
+EMAIL_SEND=false
 
-EMAIL_SEND=true
-EMAIL_DEST=seuemail@dominio.com
+# Thresholds (descomente para sobrescrever)
+# RISK_THRESHOLD=5
+# CPU_THRESHOLD=25.0
+# MEM_THRESHOLD=40.0
 
-    Configure apenas o que desejar usar (ambos são opcionais).
+# Rede
+# NET_USE_BASELINE=true
+# NET_SCAN_OUTBOUND=true
 
-Ativar monitoramento automático com systemd
+# YARA
+AUTO_UPDATE_YARA_RULES=true              # baixa/atualiza regras automaticamente
+YARA_AUTO_COMPILE=true                   # compila YARA com módulos extras se necessário
+# YARA_RULES_INDEX_FILENAME="index.yar"  # força um índice específico (opcional)
 
-O sistema usa o systemd para rodar os monitoramentos automaticamente:
+# Tempo/execução
+# RUN_CHECK_TIMEOUT=120                  # timeout global por verificação (segundos)
+# BROWSER_TIMEOUT=180                    # timeout específico do módulo de navegadores
+# PRE_CLEAN_JSON=false                   # limpar JSON antes da execução (limpeza sempre ocorre ao final)
+# EXIT_ON_THREATS=true                   # se true, retorna exit 1 quando houver novas ameaças
 
-    monitor_processo.timer: roda o monitor_processo.sh a cada 10 minutos
-    monitor_realtime.service: monitora diretórios como /tmp com inotify
+# Prompt do Response Helper ao final da varredura:
+# new    -> pergunta se houver alertas novos nesta execução
+# any    -> pergunta se existir qualquer alerta no log (padrão)
+# always -> pergunta sempre ao final, mesmo sem alertas
+# never  -> nunca pergunta automaticamente
+# RESPONSE_PROMPT_MODE=any
 
-Opção 1: Se os arquivos .service e .timer EXISTIREM
+Módulo YARA — como funciona
 
-sudo cp service/*.service /etc/systemd/system/
-sudo cp service/*.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now monitor_processo.timer
-sudo systemctl enable --now monitor_realtime.service
+    Regras:
+        Baixa/atualiza o repositório oficial: https://github.com/Yara-Rules/rules.git
+        Tenta compilar índices padrão (index.yar, index_community.yar, etc.).
+        Se falhar, constrói automaticamente um conjunto mínimo de regras compatíveis com seu YARA (fallback).
+    Módulos extras:
+        Se faltarem módulos (dex, cuckoo, magic, dotnet) e YARA_AUTO_COMPILE=true, o script compila o YARA do fonte com:
+            ./configure --enable-cuckoo --enable-dex --enable-magic --enable-dotnet
+        Alternativa (Arch/Manjaro): use o AUR (ex.: yara-git) caso não queira compilar na hora.
+    Pastas criadas:
+        yara-rules/: wrapper main.yar com includes absolutos.
+        yara-rules-repo/: repositório clonado (regras).
 
-Opção 2: Criar os arquivos manualmente (caso não existam)
-1. Crie o diretório:
+Estrutura criada automaticamente
 
-mkdir -p service
+    logs/: alertas.log, alertas.jsonl
+    baselines/: diversas baselines (hashes, LKM, rede, sudoers, etc.)
+    quarentena/: arquivos isolados
+    yara-rules/, yara-rules-repo/
+    historico/, scripts/
 
-2. Crie service/monitor_processo.service:
+Dicas e Troubleshooting
 
-[Unit]
-Description=Análise periódica de processos
-After=network.target
+    Primeira execução demorando:
+        Normal se o YARA for compilado com módulos extras. Acompanhe pelo logs/alertas.log.
+    YARA “fallback”:
+        Se os índices não compilarem, o script ativa um conjunto compatível automaticamente (exibe contagem de regras incluídas).
+    Forçar atualização de regras YARA:
+        Apague o main.yar e rode novamente:
 
-[Service]
-Type=oneshot
-ExecStart=/home/SEU_USUARIO/monitor-processos/monitor_processo.sh
-WorkingDirectory=/home/SEU_USUARIO/monitor-processos
+Bash
 
-3. Crie service/monitor_processo.timer:
+rm -f ./yara-rules/main.yar
+sudo ./monitor_processo.sh
 
-[Unit]
-Description=Executa o monitoramento de processos a cada 10 minutos
+    Verificar módulos do YARA:
 
-[Timer]
-OnBootSec=1min
-OnUnitActiveSec=10min
-Unit=monitor_processo.service
+Bash
 
-[Install]
-WantedBy=timers.target
+echo -e 'import "dex"\nrule t{condition:true}' > /tmp/d.yar
+yarac /tmp/d.yar /dev/null && echo "DEX OK" || echo "DEX FALHOU"
 
-4. Copie para o systemd:
+Contribuições
 
-sudo cp service/monitor_processo.* /etc/systemd/system/
+Contribuições são bem-vindas! Abra uma Issue ou envie um Pull Request com melhorias, novas técnicas de detecção, correções de bugs ou otimizações.
+Licença
 
-5. Recarregue e ative:
-
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-sudo systemctl enable --now monitor_processo.timer
-
-6. Verifique:
-
-systemctl status monitor_processo.timer
-
-Ativar o monitoramento em tempo real
-1. Crie service/monitor_realtime.service:
-
-[Unit]
-Description=Monitoramento em tempo real com inotify
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/home/SEU_USUARIO/monitor-processos/monitor_realtime.sh
-WorkingDirectory=/home/SEU_USUARIO/monitor-processos
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-
-2. Copie e ative:
-
-sudo cp service/monitor_realtime.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now monitor_realtime.service
-
-Interface gráfica (Zenity)
-
-Execute com:
-
-./monitor_gui.sh
-
-Permite:
-
-    Rodar análise manual ou em modo de teste
-    Ver alertas recentes
-    Gerenciar whitelist
-    Ver histórico de snapshots
-    Obter ajuda sobre qualquer processo
-    Limpar o log de alertas
-
-Teste manual
-Análise principal:
-
-./monitor_processo.sh
-
-Modo de teste (sem Telegram/e-mail):
-
-./monitor_processo.sh --dry-run
-
-Monitoramento em tempo real:
-
-./monitor_realtime.sh
-
-Arquivos importantes
-Arquivo / Pasta 	Função
-processo_whitelist.txt 	Lista de comandos confiáveis (um por linha)
-hash_db.txt     	Hashes SHA256 dos binários monitorados
-alertas.log     	Log principal de alertas
-historico/      	Snapshot de todos os processos analisados
-.env 	                Configurações de alerta por Telegram e/ou e-mail
-
-Alertas detectados
-
-O sistema detecta automaticamente:
-
-    Processos fora da whitelist
-    Execução em /tmp, /dev/shm, etc
-    Nomes de processos suspeitos
-    Processos iniciados por shell
-    Binários deletados
-    Alto uso de CPU ou memória
-    Binários modificados (hash alterado)
-    Binários não pertencentes a pacotes
-    Conexões de rede externas
-    Processos ocultos (via unhide)
-
-Manutenção automática
-
-    Logs antigos do diretório historico/ são compactados após 7 dias
-    Alertas duplicados são ignorados por execução
-    O banco man é atualizado automaticamente com mandb -q
-
-Requisitos Necessarios para a execução
-
-    Arch Linux
-    Pacotes: veja requisitos.txt
-
-Autor
+MIT — veja LICENSE.
+Desenvolvedor
 
 André
-
-📄 Licença
-
-
-Este projeto está licenciado sob os termos da [Licença MIT](LICENSE).
-
-
+GitHub: https://github.com/andrelu1/monitor-processos
